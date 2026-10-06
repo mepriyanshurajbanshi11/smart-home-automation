@@ -19,12 +19,16 @@ import { TorchController } from './src/components/TorchController';
 import { ScreenLampModal } from './src/components/ScreenLampModal';
 import { mqttClient } from './src/services/mqttClient';
 import { DEFAULT_MQTT_CONFIG, INITIAL_DEVICES } from './src/constants/config';
+import { useKeepAwake } from 'expo-keep-awake';
 import { Device, MqttConfig, RoomId, SensorData, ConnectionStatus } from './src/types';
 
 const STORAGE_KEY_CONFIG = '@smart_home_mqtt_config_v1';
 const STORAGE_KEY_OFFLINE = '@smart_home_offline_mode_v1';
 
 export default function App() {
+  // Prevent mobile screen from sleeping/locking to maintain permanent MQTT connection
+  useKeepAwake();
+
   const [config, setConfig] = useState<MqttConfig>(DEFAULT_MQTT_CONFIG);
   const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false); // Enabled online by default so laptop can control!
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');

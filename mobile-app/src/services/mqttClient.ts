@@ -1,4 +1,5 @@
 import { Client, Message } from 'paho-mqtt';
+import { AppState, AppStateStatus } from 'react-native';
 import { MqttConfig, ConnectionStatus } from '../types';
 
 type MessageCallback = (topic: string, message: string) => void;
@@ -10,9 +11,28 @@ class MqttService {
   private statusCallbacks: StatusCallback[] = [];
   private subscribedTopics: Set<string> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private currentConfig: MqttConfig | null = null;
   private shouldReconnect: boolean = true;
   private isConnecting: boolean = false;
+  private reconnectAttempts: number = 0;
+
+  constructor() {
+    // Listen for phone foreground events to immediately restore connection
+    AppState.addEventListener('change', this.handleAppStateChange);
+    this.startWatchdog();
+  }
+
+  private handleAppStateChange = (nextAppState: AppStateStatus) => {
+    if (nextAppState === 'active') {
+      // Phone screen woke up or app returned to foreground
+      if (this.shouldReconnect && (!this.client || !this.client.isConnected())) {
+        this.reconnectAttempts = 0;
+        this.scheduleReconnect(100);
+      }
+    }
+  };
 
   public onMessage(callback: MessageCallback) {
     this.messageCallbacks.push(callback);
@@ -49,17 +69,22 @@ class MqttService {
     }
 
     try {
-      if (this.client && this.client.isConnected()) {
+      if (this.client) {
         try {
-          this.client.disconnect();
+          if (this.client.isConnected()) {
+            this.client.disconnect();
+          }
         } catch (_) {}
       }
 
       const path = config.path.startsWith('/') ? config.path : `/${config.path}`;
-      this.client = new Client(config.host, Number(config.port), path, config.clientId);
+      // Append a stable random session id if not present
+      const clientId = config.clientId || `home_app_${Math.random().toString(16).substring(2, 8)}`;
+      this.client = new Client(config.host, Number(config.port), path, clientId);
 
       this.client.onConnectionLost = (responseObject) => {
         this.isConnecting = false;
+        this.stopHeartbeat();
         const err = responseObject?.errorMessage || 'Connection lost';
         this.notifyStatus('disconnected', err);
         if (this.shouldReconnect) {
@@ -79,19 +104,25 @@ class MqttService {
 
       const connectOptions: any = {
         timeout: 10,
-        keepAliveInterval: 30,
+        keepAliveInterval: 20, // 20s keepalive to prevent carrier/NAT drop
         cleanSession: true,
         useSSL: config.useSSL,
         onSuccess: () => {
           this.isConnecting = false;
+          this.reconnectAttempts = 0;
           this.notifyStatus('connected');
+          this.startHeartbeat();
+
           // Re-subscribe to all active topics
           this.subscribedTopics.forEach(topic => {
-            this.client?.subscribe(topic, { qos: 1 });
+            try {
+              this.client?.subscribe(topic, { qos: 1 });
+            } catch (_) {}
           });
         },
         onFailure: (err: any) => {
           this.isConnecting = false;
+          this.stopHeartbeat();
           const errString = err?.errorMessage || 'Failed to connect';
           this.notifyStatus('error', errString);
           if (this.shouldReconnect) {
@@ -108,6 +139,7 @@ class MqttService {
       this.client.connect(connectOptions);
     } catch (err: any) {
       this.isConnecting = false;
+      this.stopHeartbeat();
       this.notifyStatus('error', err?.message || 'MQTT Initialization Error');
       if (this.shouldReconnect) {
         this.scheduleReconnect();
@@ -115,14 +147,57 @@ class MqttService {
     }
   }
 
-  private scheduleReconnect() {
+  /**
+   * Active application-level heartbeat every 15s to guarantee
+   * mobile network carriers and Wi-Fi routers never drop the socket.
+   */
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.client && this.client.isConnected()) {
+        try {
+          const msg = new Message(JSON.stringify({ t: Date.now() }));
+          msg.destinationName = 'home/heartbeat';
+          msg.qos = 0;
+          this.client.send(msg);
+        } catch (_) {}
+      }
+    }, 15000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  /**
+   * Background watchdog checking connection state every 8s
+   */
+  private startWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (this.shouldReconnect && !this.isConnecting && this.currentConfig) {
+        if (!this.client || !this.client.isConnected()) {
+          this.scheduleReconnect(500);
+        }
+      }
+    }, 8000);
+  }
+
+  private scheduleReconnect(delayMs?: number) {
     if (this.reconnectTimer) return;
+    this.reconnectAttempts++;
+    // Reconnect quickly (2s) on early attempts, max 10s backoff
+    const delay = delayMs ?? Math.min(2000 * Math.min(this.reconnectAttempts, 4), 10000);
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.currentConfig && this.shouldReconnect) {
         this.connect(this.currentConfig);
       }
-    }, 5000);
+    }, delay);
   }
 
   public subscribe(topic: string) {
@@ -156,6 +231,7 @@ class MqttService {
 
   public disconnect() {
     this.shouldReconnect = false;
+    this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
