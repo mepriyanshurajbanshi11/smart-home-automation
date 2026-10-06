@@ -1,0 +1,60 @@
+# Node / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Environment & Credentials (NEVER upload to GitHub)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+env/
+ENV/
+
+# Mosquitto / Docker Broker local persistence
+broker/data/
+broker/log/
+mosquitto_data/
+mosquitto_log/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

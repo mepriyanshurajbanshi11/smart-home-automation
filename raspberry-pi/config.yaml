@@ -1,0 +1,51 @@
+# ========================================================
+# Smart Home Automation - Raspberry Pi Configuration
+# ========================================================
+
+mqtt:
+  # Host: Use "localhost" if Mosquitto runs on this Pi, 
+  # or local IP (e.g. 192.168.1.100), or a public cloud broker (broker.emqx.io)
+  broker: "localhost"
+  port: 1883
+  client_id: "raspberry-pi-smart-home"
+  keepalive: 60
+  username: ""
+  password: ""
+
+device:
+  device_name: "RPi-Home-Hub"
+  status_topic: "home/status"
+  telemetry_interval_sec: 5
+
+# GPIO Pin Configuration (BCM numbering)
+# NOTE: Active LOW relays turn ON when pin is pulled LOW (0)
+gpio:
+  active_low_relays: true
+  relays:
+    living_room_light:
+      pin: 17
+      cmd_topic: "home/living_room/light/set"
+      state_topic: "home/living_room/light/state"
+    bedroom_light:
+      pin: 27
+      cmd_topic: "home/bedroom/light/set"
+      state_topic: "home/bedroom/light/state"
+    kitchen_light:
+      pin: 22
+      cmd_topic: "home/kitchen/light/set"
+      state_topic: "home/kitchen/light/state"
+    living_room_plug:
+      pin: 23
+      cmd_topic: "home/living_room/plug/set"
+      state_topic: "home/living_room/plug/state"
+    fan:
+      pin: 24
+      cmd_topic: "home/living_room/fan/set"
+      state_topic: "home/living_room/fan/state"
+
+  sensors:
+    dht_pin: 4          # DHT11 / DHT22 Data Pin
+    pir_motion_pin: 18  # PIR Motion Sensor Pin
+    motion_topic: "home/sensors/motion"
+    temp_topic: "home/sensors/temperature"
+    humidity_topic: "home/sensors/humidity"

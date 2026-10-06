@@ -1,0 +1,29 @@
+{
+  "name": "mobile-app",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "@types/paho-mqtt": "^1.0.10",
+    "expo": "~57.0.27",
+    "expo-status-bar": "~57.0.1",
+    "lucide-react-native": "^1.52.0",
+    "paho-mqtt": "^1.1.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-svg": "^15.15.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

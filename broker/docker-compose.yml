@@ -1,0 +1,16 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: smart_home_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # Standard MQTT for Raspberry Pi / microcontrollers
+      - "9001:9001"   # MQTT over WebSockets for React Native / Web App
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:

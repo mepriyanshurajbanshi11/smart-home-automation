@@ -1,0 +1,97 @@
+import { Device, MqttConfig, RoomId } from '../types';
+
+export const DEFAULT_MQTT_CONFIG: MqttConfig = {
+  // broker.emqx.io is a public broker supporting WebSockets on 8083 (wss: 8084)
+  // For local Raspberry Pi Mosquitto, user can set IP e.g. "192.168.1.100" with port 9001
+  host: 'broker.emqx.io',
+  port: 8083,
+  path: '/mqtt',
+  clientId: `smart_home_app_${Math.random().toString(16).substring(2, 8)}`,
+  username: '',
+  password: '',
+  useSSL: false,
+};
+
+export const ROOMS: { id: RoomId; name: string; icon: string }[] = [
+  { id: 'all', name: 'All Rooms', icon: 'home-outline' },
+  { id: 'living_room', name: 'Living Room', icon: 'tv-outline' },
+  { id: 'bedroom', name: 'Bedroom', icon: 'bed-outline' },
+  { id: 'kitchen', name: 'Kitchen', icon: 'restaurant-outline' },
+  { id: 'outdoor', name: 'Outdoor', icon: 'leaf-outline' },
+];
+
+export const INITIAL_DEVICES: Device[] = [
+  {
+    id: 'lr_light',
+    name: 'Main Ceiling Light',
+    room: 'living_room',
+    type: 'light',
+    state: false,
+    value: 80,
+    unit: '%',
+    cmdTopic: 'home/living_room/light/set',
+    stateTopic: 'home/living_room/light/state',
+  },
+  {
+    id: 'lr_fan',
+    name: 'Ceiling Fan',
+    room: 'living_room',
+    type: 'fan',
+    state: false,
+    value: 2,
+    unit: 'Speed',
+    cmdTopic: 'home/living_room/fan/set',
+    stateTopic: 'home/living_room/fan/state',
+  },
+  {
+    id: 'lr_plug',
+    name: 'Media Console Plug',
+    room: 'living_room',
+    type: 'plug',
+    state: false,
+    cmdTopic: 'home/living_room/plug/set',
+    stateTopic: 'home/living_room/plug/state',
+  },
+  {
+    id: 'bed_light',
+    name: 'Bedside Lamp',
+    room: 'bedroom',
+    type: 'light',
+    state: false,
+    value: 60,
+    unit: '%',
+    cmdTopic: 'home/bedroom/light/set',
+    stateTopic: 'home/bedroom/light/state',
+  },
+  {
+    id: 'bed_ac',
+    name: 'Air Conditioner',
+    room: 'bedroom',
+    type: 'ac',
+    state: false,
+    value: 22,
+    unit: '°C',
+    cmdTopic: 'home/bedroom/ac/set',
+    stateTopic: 'home/bedroom/ac/state',
+  },
+  {
+    id: 'kitch_light',
+    name: 'Kitchen Counter Lights',
+    room: 'kitchen',
+    type: 'light',
+    state: false,
+    value: 100,
+    unit: '%',
+    cmdTopic: 'home/kitchen/light/set',
+    stateTopic: 'home/kitchen/light/state',
+  },
+  {
+    id: 'out_alarm',
+    name: 'Perimeter Security',
+    room: 'outdoor',
+    type: 'alarm',
+    state: false,
+    cmdTopic: 'home/security/alarm/set',
+    stateTopic: 'home/security/alarm/state',
+  },
+];
