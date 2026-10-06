@@ -48,10 +48,11 @@ Unlike traditional smart home applications that demand unnecessary system access
 | :--- | :--- | :--- |
 | **Android** | `android.permission.INTERNET` | Connect to MQTT broker via WebSockets |
 | **Android** | `android.permission.ACCESS_NETWORK_STATE` | Detect Wi-Fi / cellular online status |
-| **iOS** | *None* | Uses standard network socket APIs |
+| **Android** | `android.permission.CAMERA` | Strictly required to toggle physical phone flashlight / torch LED |
+| **iOS** | `NSCameraUsageDescription` | Strictly used to toggle physical phone flashlight / torch |
 
 > [!NOTE]
-> **Zero invasive permissions**: No GPS/Fine Location, No Camera, No Microphone, No Contacts, and No Storage access.
+> **Zero invasive permissions**: No GPS/Fine Location, No Photo Library access, No Microphone, No Contacts, and No Storage access.
 
 ---
 
@@ -67,11 +68,11 @@ Unlike traditional smart home applications that demand unnecessary system access
 │   └── mosquitto.conf           # Config with TCP 1883 & WebSockets 9001
 ├── mobile-app/
 │   ├── src/
-│   │   ├── components/          # Header, SensorCard, DeviceCard, QuickScenes, Settings
+│   │   ├── components/          # Header, SensorCard, DeviceCard, QuickScenes, Settings, TorchController
 │   │   ├── constants/           # Device & Room configurations
 │   │   ├── services/            # Paho MQTT client wrapper & event bus
 │   │   └── types/               # TypeScript interfaces
-│   ├── App.tsx                  # Main smart home dashboard
+│   ├── App.tsx                  # Main smart home dashboard with flashlight toggle
 │   ├── app.json                 # Minimal permission manifest
 │   └── package.json
 ├── raspberry-pi/
@@ -80,6 +81,7 @@ Unlike traditional smart home applications that demand unnecessary system access
 │   ├── requirements.txt         # Python dependencies
 │   ├── setup_pi.sh              # 1-command install script for Raspberry Pi OS
 │   └── smart-home.service       # Systemd auto-start service
+├── laptop_controller.py         # Laptop CLI & Web Dashboard to control phone & appliances
 ├── .gitignore                   # Clean ignore rules (no node_modules, .env, pycache)
 ├── .env.example                 # Environment variable template
 ├── LICENSE                      # MIT Open Source License
@@ -162,6 +164,26 @@ docker compose up -d
    - **Android Emulator**: Press `a`.
 
 4. Tap the **Settings icon** (⚙️) in the top right to configure your MQTT broker IP (e.g. `192.168.1.100` or preset `broker.emqx.io`).
+5. Toggle **"Mobile Flashlight (Torch)"** to control your phone's real back flashlight!
+
+---
+
+### 4. Control from Your Laptop (CLI & Web Dashboard)
+
+You can remotely trigger the phone's flashlight and appliances right from your laptop:
+
+* **Interactive CLI & Web Dashboard**:
+  ```bash
+  python laptop_controller.py
+  ```
+  *(Opens local web dashboard at `http://localhost:5000`)*
+
+* **Instant Commands**:
+  ```bash
+  python laptop_controller.py on       # Turns phone flashlight ON
+  python laptop_controller.py off      # Turns phone flashlight OFF
+  python laptop_controller.py strobe   # Blinks phone flashlight 5 times
+  ```
 
 ---
 

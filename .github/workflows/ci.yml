@@ -33,5 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r raspberry-pi/requirements.txt
       - name: Compile check
-        run: python -m py_compile raspberry-pi/controller.py
+        run: python -m py_compile raspberry-pi/controller.py laptop_controller.py
