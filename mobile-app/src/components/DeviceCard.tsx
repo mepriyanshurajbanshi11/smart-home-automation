@@ -7,12 +7,14 @@ interface DeviceCardProps {
   device: Device;
   onToggle: (id: string, currentState: boolean) => void;
   onValueChange: (id: string, newValue: number) => void;
+  onOpenScreenLamp?: () => void;
 }
 
 export const DeviceCard: React.FC<DeviceCardProps> = ({
   device,
   onToggle,
   onValueChange,
+  onOpenScreenLamp,
 }) => {
   const getDeviceIcon = () => {
     switch (device.type) {
@@ -84,6 +86,18 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
           {device.state ? 'Running / ON' : 'Turned OFF'}
         </Text>
       </View>
+
+      {/* Special button for Mobile Flashlight: Screen Lamp */}
+      {device.id === 'mobile_torch' && onOpenScreenLamp && (
+        <TouchableOpacity
+          style={styles.screenLampBtn}
+          onPress={onOpenScreenLamp}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="sunny-outline" size={16} color="#38BDF8" />
+          <Text style={styles.screenLampText}>Open Screen Lamp Mode</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Control adjustment for Light (Brightness), AC (Temp), Fan (Speed) */}
       {device.state && device.value !== undefined && (
@@ -191,5 +205,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  screenLampBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#38BDF840',
+    gap: 6,
+  },
+  screenLampText: {
+    fontSize: 12,
+    color: '#38BDF8',
+    fontWeight: '600',
   },
 });

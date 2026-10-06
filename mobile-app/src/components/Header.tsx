@@ -6,17 +6,22 @@ import { ConnectionStatus } from '../types';
 interface HeaderProps {
   status: ConnectionStatus;
   brokerHost: string;
+  isOfflineMode: boolean;
   onOpenSettings: () => void;
   onRefresh: () => void;
+  onToggleOfflineMode: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   status,
   brokerHost,
+  isOfflineMode,
   onOpenSettings,
   onRefresh,
+  onToggleOfflineMode,
 }) => {
   const getStatusColor = () => {
+    if (isOfflineMode) return '#38BDF8'; // Sky Blue for Local Mode
     switch (status) {
       case 'connected':
         return '#10B981'; // Emerald Green
@@ -30,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const getStatusText = () => {
+    if (isOfflineMode) return 'Local / Offline Mode';
     switch (status) {
       case 'connected':
         return 'Online';
@@ -46,19 +52,29 @@ export const Header: React.FC<HeaderProps> = ({
     <View style={styles.container}>
       <View>
         <Text style={styles.title}>Smart Living</Text>
-        <TouchableOpacity style={styles.statusRow} onPress={onRefresh} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.statusRow} onPress={onToggleOfflineMode} activeOpacity={0.7}>
           <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-          <Text style={styles.statusText}>{getStatusText()}</Text>
-          <Text style={styles.brokerText}>• {brokerHost}</Text>
+          <Text style={[styles.statusText, isOfflineMode && { color: '#38BDF8' }]}>
+            {getStatusText()}
+          </Text>
+          {!isOfflineMode && <Text style={styles.brokerText}>• {brokerHost}</Text>}
         </TouchableOpacity>
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.iconButton} onPress={onRefresh} accessibilityLabel="Refresh connection">
-          <Ionicons name="refresh-outline" size={22} color="#94A3B8" />
+        <TouchableOpacity
+          style={[styles.iconButton, isOfflineMode && styles.offlineActiveButton]}
+          onPress={onToggleOfflineMode}
+          accessibilityLabel="Toggle Local/Online Mode"
+        >
+          <Ionicons
+            name={isOfflineMode ? 'flash' : 'cloud-outline'}
+            size={20}
+            color={isOfflineMode ? '#0F172A' : '#94A3B8'}
+          />
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconButton} onPress={onOpenSettings} accessibilityLabel="MQTT Settings">
-          <Ionicons name="settings-outline" size={22} color="#94A3B8" />
+          <Ionicons name="settings-outline" size={20} color="#94A3B8" />
         </TouchableOpacity>
       </View>
     </View>
@@ -116,5 +132,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#334155',
+  },
+  offlineActiveButton: {
+    backgroundColor: '#38BDF8',
+    borderColor: '#38BDF8',
   },
 });

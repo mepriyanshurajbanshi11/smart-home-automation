@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   ScrollView,
   StatusBar,
-  Alert,
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,62 +15,104 @@ import { QuickScenes } from './src/components/QuickScenes';
 import { RoomTabs } from './src/components/RoomTabs';
 import { DeviceCard } from './src/components/DeviceCard';
 import { SettingsModal } from './src/components/SettingsModal';
+import { TorchController } from './src/components/TorchController';
+import { ScreenLampModal } from './src/components/ScreenLampModal';
 import { mqttClient } from './src/services/mqttClient';
 import { DEFAULT_MQTT_CONFIG, INITIAL_DEVICES } from './src/constants/config';
 import { Device, MqttConfig, RoomId, SensorData, ConnectionStatus } from './src/types';
 
 const STORAGE_KEY_CONFIG = '@smart_home_mqtt_config_v1';
+const STORAGE_KEY_OFFLINE = '@smart_home_offline_mode_v1';
 
 export default function App() {
   const [config, setConfig] = useState<MqttConfig>(DEFAULT_MQTT_CONFIG);
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(true); // Defaults to true for local/offline usage!
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [selectedRoom, setSelectedRoom] = useState<RoomId>('all');
   const [devices, setDevices] = useState<Device[]>(INITIAL_DEVICES);
   const [sensorData, setSensorData] = useState<SensorData>({
-    temperature: 24.5,
-    humidity: 52,
+    temperature: 24.2,
+    humidity: 50,
     motionDetected: false,
-    lastUpdated: 'Just now',
+    lastUpdated: 'Live',
   });
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [screenLampOpen, setScreenLampOpen] = useState<boolean>(false);
 
-  // Load saved MQTT configuration
+  // Find mobile torch state
+  const mobileTorch = devices.find(d => d.id === 'mobile_torch');
+  const isTorchActive = !!mobileTorch?.state;
+  const torchBrightness = mobileTorch?.value ?? 100;
+
+  // Load saved settings & offline mode preference
   useEffect(() => {
     (async () => {
       try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEY_CONFIG);
-        if (saved) {
-          const parsed = JSON.parse(saved);
+        const savedOffline = await AsyncStorage.getItem(STORAGE_KEY_OFFLINE);
+        const offline = savedOffline !== null ? JSON.parse(savedOffline) : true;
+        setIsOfflineMode(offline);
+
+        const savedConfig = await AsyncStorage.getItem(STORAGE_KEY_CONFIG);
+        if (savedConfig) {
+          const parsed = JSON.parse(savedConfig);
           setConfig(parsed);
-          mqttClient.connect(parsed);
+          if (!offline) {
+            mqttClient.connect(parsed);
+          }
           return;
         }
       } catch (e) {
-        console.warn('Failed to load saved config:', e);
+        console.warn('Failed to load settings from storage:', e);
       }
-      mqttClient.connect(DEFAULT_MQTT_CONFIG);
+      if (!isOfflineMode) {
+        mqttClient.connect(DEFAULT_MQTT_CONFIG);
+      }
     })();
   }, []);
 
-  // Listen to MQTT status changes
+  // Offline ambient sensor simulator
   useEffect(() => {
-    const unsubscribeStatus = mqttClient.onStatusChange((newStatus, errorMsg) => {
+    if (!isOfflineMode) return;
+
+    const interval = setInterval(() => {
+      setSensorData(prev => {
+        const tempDelta = (Math.random() - 0.5) * 0.2;
+        const newTemp = Math.round((prev.temperature + tempDelta) * 10) / 10;
+        const humDelta = (Math.random() - 0.5) * 0.5;
+        const newHum = Math.round(prev.humidity + humDelta);
+        const motion = Math.random() < 0.08;
+
+        return {
+          temperature: Math.max(18, Math.min(30, newTemp)),
+          humidity: Math.max(35, Math.min(75, newHum)),
+          motionDetected: motion,
+          lastUpdated: 'Live (Local)',
+        };
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isOfflineMode]);
+
+  // Listen to MQTT status changes when in online mode
+  useEffect(() => {
+    if (isOfflineMode) return;
+
+    const unsubscribeStatus = mqttClient.onStatusChange((newStatus) => {
       setStatus(newStatus);
-      if (newStatus === 'error' && errorMsg) {
-        console.warn('MQTT Error:', errorMsg);
-      }
     });
 
     return () => {
       unsubscribeStatus();
     };
-  }, []);
+  }, [isOfflineMode]);
 
-  // Listen to incoming MQTT messages
+  // Listen to incoming MQTT messages when in online mode
   useEffect(() => {
+    if (isOfflineMode) return;
+
     const unsubscribeMessage = mqttClient.onMessage((topic, payload) => {
       try {
-        // 1. Temperature Telemetry
         if (topic.includes('sensors/temperature')) {
           const data = JSON.parse(payload);
           const temp = typeof data === 'object' ? data.value : parseFloat(data);
@@ -85,7 +126,6 @@ export default function App() {
           return;
         }
 
-        // 2. Humidity Telemetry
         if (topic.includes('sensors/humidity')) {
           const data = JSON.parse(payload);
           const hum = typeof data === 'object' ? data.value : parseFloat(data);
@@ -95,7 +135,6 @@ export default function App() {
           return;
         }
 
-        // 3. Motion Telemetry
         if (topic.includes('sensors/motion')) {
           const data = JSON.parse(payload);
           const motion = typeof data === 'object' ? !!data.motion_detected : data === 'ON' || data === 'true';
@@ -103,13 +142,12 @@ export default function App() {
           return;
         }
 
-        // 4. Device State Updates
+        // Device State Updates
         setDevices(prevDevices =>
           prevDevices.map(dev => {
             if (dev.stateTopic === topic) {
               let newState = dev.state;
               let newValue = dev.value;
-
               try {
                 const parsed = JSON.parse(payload);
                 if (typeof parsed === 'object') {
@@ -125,18 +163,16 @@ export default function App() {
               } catch (_) {
                 newState = payload.trim().toUpperCase() === 'ON';
               }
-
               return { ...dev, state: newState, value: newValue };
             }
             return dev;
           })
         );
       } catch (err) {
-        console.warn('Error parsing incoming topic payload:', topic, payload, err);
+        console.warn('MQTT message parse error:', err);
       }
     });
 
-    // Subscribe to sensor and device state topics
     mqttClient.subscribe('home/sensors/#');
     mqttClient.subscribe('home/+/+/state');
     mqttClient.subscribe('home/status');
@@ -144,7 +180,22 @@ export default function App() {
     return () => {
       unsubscribeMessage();
     };
-  }, []);
+  }, [isOfflineMode]);
+
+  const toggleOfflineMode = async () => {
+    const nextMode = !isOfflineMode;
+    setIsOfflineMode(nextMode);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY_OFFLINE, JSON.stringify(nextMode));
+    } catch (_) {}
+
+    if (nextMode) {
+      mqttClient.disconnect();
+      setStatus('disconnected');
+    } else {
+      mqttClient.connect(config);
+    }
+  };
 
   const handleToggleDevice = useCallback((id: string, currentState: boolean) => {
     const nextState = !currentState;
@@ -153,7 +204,7 @@ export default function App() {
     );
 
     const targetDev = devices.find(d => d.id === id);
-    if (targetDev) {
+    if (targetDev && !isOfflineMode) {
       const payload = JSON.stringify({
         state: nextState ? 'ON' : 'OFF',
         active: nextState,
@@ -161,7 +212,7 @@ export default function App() {
       });
       mqttClient.publish(targetDev.cmdTopic, payload);
     }
-  }, [devices]);
+  }, [devices, isOfflineMode]);
 
   const handleValueChange = useCallback((id: string, newValue: number) => {
     setDevices(prev =>
@@ -169,7 +220,7 @@ export default function App() {
     );
 
     const targetDev = devices.find(d => d.id === id);
-    if (targetDev) {
+    if (targetDev && !isOfflineMode) {
       const payload = JSON.stringify({
         state: targetDev.state ? 'ON' : 'OFF',
         brightness: targetDev.type === 'light' ? newValue : undefined,
@@ -178,27 +229,29 @@ export default function App() {
       });
       mqttClient.publish(targetDev.cmdTopic, payload);
     }
-  }, [devices]);
+  }, [devices, isOfflineMode]);
 
   const handleTriggerScene = useCallback((sceneId: string) => {
     if (sceneId === 'all_off') {
       setDevices(prev => prev.map(d => ({ ...d, state: false })));
-      devices.forEach(d => {
-        mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
-      });
+      if (!isOfflineMode) {
+        devices.forEach(d => {
+          mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
+        });
+      }
     } else if (sceneId === 'movie_mode') {
-      // Dim living room light to 20%, turn on media plug
       setDevices(prev =>
         prev.map(d => {
-          if (d.id === 'lr_light') return { ...d, state: true, value: 20 };
+          if (d.id === 'lr_light' || d.id === 'mobile_torch') return { ...d, state: true, value: 20 };
           if (d.id === 'lr_plug') return { ...d, state: true };
           return d;
         })
       );
-      mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'ON', brightness: 20 }));
-      mqttClient.publish('home/living_room/plug/set', JSON.stringify({ state: 'ON' }));
+      if (!isOfflineMode) {
+        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'ON', brightness: 20 }));
+        mqttClient.publish('home/living_room/plug/set', JSON.stringify({ state: 'ON' }));
+      }
     } else if (sceneId === 'night_mode') {
-      // Turn off main room lights, turn on bedside lamp dimmed
       setDevices(prev =>
         prev.map(d => {
           if (d.id === 'lr_light' || d.id === 'kitch_light') return { ...d, state: false };
@@ -206,38 +259,37 @@ export default function App() {
           return d;
         })
       );
-      mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'OFF' }));
-      mqttClient.publish('home/kitchen/light/set', JSON.stringify({ state: 'OFF' }));
-      mqttClient.publish('home/bedroom/light/set', JSON.stringify({ state: 'ON', brightness: 15 }));
+      if (!isOfflineMode) {
+        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'OFF' }));
+        mqttClient.publish('home/kitchen/light/set', JSON.stringify({ state: 'OFF' }));
+        mqttClient.publish('home/bedroom/light/set', JSON.stringify({ state: 'ON', brightness: 15 }));
+      }
     } else if (sceneId === 'leaving') {
-      // Turn off all, arm security
       setDevices(prev =>
         prev.map(d => {
           if (d.id === 'out_alarm') return { ...d, state: true };
           return { ...d, state: false };
         })
       );
-      devices.forEach(d => {
-        if (d.id !== 'out_alarm') {
-          mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
-        }
-      });
-      mqttClient.publish('home/security/alarm/set', JSON.stringify({ state: 'ON', armed: true }));
+      if (!isOfflineMode) {
+        devices.forEach(d => {
+          if (d.id !== 'out_alarm') {
+            mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
+          }
+        });
+        mqttClient.publish('home/security/alarm/set', JSON.stringify({ state: 'ON', armed: true }));
+      }
     }
-  }, [devices]);
+  }, [devices, isOfflineMode]);
 
   const handleSaveSettings = async (newConfig: MqttConfig) => {
     setConfig(newConfig);
     try {
       await AsyncStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(newConfig));
-    } catch (e) {
-      console.warn('Failed to save config to storage:', e);
+    } catch (_) {}
+    if (!isOfflineMode) {
+      mqttClient.connect(newConfig);
     }
-    mqttClient.connect(newConfig);
-  };
-
-  const handleReconnect = () => {
-    mqttClient.connect(config);
   };
 
   const filteredDevices =
@@ -249,12 +301,35 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
 
+      {/* Physical Hardware Torch Controller (Hidden CameraView) */}
+      <TorchController
+        torchOn={isTorchActive}
+        onPermissionDenied={() => {
+          // If camera permission is denied, keep UI in sync
+          setDevices(prev =>
+            prev.map(d => (d.id === 'mobile_torch' ? { ...d, state: false } : d))
+          );
+        }}
+      />
+
+      {/* Screen Ambient Lamp Modal */}
+      <ScreenLampModal
+        visible={screenLampOpen}
+        brightness={torchBrightness}
+        onClose={() => setScreenLampOpen(false)}
+        onBrightnessChange={(val) => handleValueChange('mobile_torch', val)}
+      />
+
       {/* Top Header */}
       <Header
         status={status}
         brokerHost={config.host}
+        isOfflineMode={isOfflineMode}
         onOpenSettings={() => setSettingsOpen(true)}
-        onRefresh={handleReconnect}
+        onRefresh={() => {
+          if (!isOfflineMode) mqttClient.connect(config);
+        }}
+        onToggleOfflineMode={toggleOfflineMode}
       />
 
       <ScrollView
@@ -288,12 +363,17 @@ export default function App() {
               device={device}
               onToggle={handleToggleDevice}
               onValueChange={handleValueChange}
+              onOpenScreenLamp={
+                device.id === 'mobile_torch'
+                  ? () => setScreenLampOpen(true)
+                  : undefined
+              }
             />
           ))}
         </View>
       </ScrollView>
 
-      {/* MQTT Broker Settings Modal */}
+      {/* Settings Modal */}
       <SettingsModal
         visible={settingsOpen}
         config={config}

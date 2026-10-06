@@ -22,6 +22,17 @@ export const ROOMS: { id: RoomId; name: string; icon: string }[] = [
 
 export const INITIAL_DEVICES: Device[] = [
   {
+    id: 'mobile_torch',
+    name: 'Mobile Flashlight (Torch)',
+    room: 'living_room',
+    type: 'light',
+    state: false,
+    value: 100,
+    unit: '%',
+    cmdTopic: 'home/living_room/torch/set',
+    stateTopic: 'home/living_room/torch/state',
+  },
+  {
     id: 'lr_light',
     name: 'Main Ceiling Light',
     room: 'living_room',
