@@ -26,7 +26,7 @@ const STORAGE_KEY_OFFLINE = '@smart_home_offline_mode_v1';
 
 export default function App() {
   const [config, setConfig] = useState<MqttConfig>(DEFAULT_MQTT_CONFIG);
-  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(true); // Defaults to true for local/offline usage!
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false); // Enabled online by default so laptop can control!
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [selectedRoom, setSelectedRoom] = useState<RoomId>('all');
   const [devices, setDevices] = useState<Device[]>(INITIAL_DEVICES);
@@ -49,7 +49,7 @@ export default function App() {
     (async () => {
       try {
         const savedOffline = await AsyncStorage.getItem(STORAGE_KEY_OFFLINE);
-        const offline = savedOffline !== null ? JSON.parse(savedOffline) : true;
+        const offline = savedOffline !== null ? JSON.parse(savedOffline) : false;
         setIsOfflineMode(offline);
 
         const savedConfig = await AsyncStorage.getItem(STORAGE_KEY_CONFIG);
@@ -64,9 +64,7 @@ export default function App() {
       } catch (e) {
         console.warn('Failed to load settings from storage:', e);
       }
-      if (!isOfflineMode) {
-        mqttClient.connect(DEFAULT_MQTT_CONFIG);
-      }
+      mqttClient.connect(DEFAULT_MQTT_CONFIG);
     })();
   }, []);
 
@@ -142,27 +140,42 @@ export default function App() {
           return;
         }
 
-        // Device State Updates
+        // Device State & Command Updates (from Laptop or other controllers)
         setDevices(prevDevices =>
           prevDevices.map(dev => {
-            if (dev.stateTopic === topic) {
+            const isMatch =
+              dev.stateTopic === topic ||
+              dev.cmdTopic === topic ||
+              (dev.id === 'mobile_torch' && (topic === 'home/torch/set' || topic === 'home/flashlight/set'));
+
+            if (isMatch) {
               let newState = dev.state;
               let newValue = dev.value;
               try {
                 const parsed = JSON.parse(payload);
                 if (typeof parsed === 'object') {
                   if (parsed.state !== undefined) {
-                    newState = String(parsed.state).toUpperCase() === 'ON' || parsed.state === true;
+                    newState = String(parsed.state).toUpperCase() === 'ON' || parsed.state === true || parsed.state === 1;
                   }
                   if (parsed.brightness !== undefined) newValue = parsed.brightness;
                   if (parsed.speed !== undefined) newValue = parsed.speed;
                   if (parsed.temperature !== undefined) newValue = parsed.temperature;
                 } else {
-                  newState = String(parsed).toUpperCase() === 'ON';
+                  newState = String(parsed).toUpperCase() === 'ON' || parsed === '1';
                 }
               } catch (_) {
-                newState = payload.trim().toUpperCase() === 'ON';
+                const clean = payload.trim().toUpperCase();
+                newState = clean === 'ON' || clean === '1' || clean === 'TRUE';
               }
+
+              // If this was a command from the laptop, publish confirmation state back
+              if (dev.cmdTopic === topic || topic.endsWith('/set')) {
+                mqttClient.publish(
+                  dev.stateTopic,
+                  JSON.stringify({ state: newState ? 'ON' : 'OFF', active: newState, value: newValue })
+                );
+              }
+
               return { ...dev, state: newState, value: newValue };
             }
             return dev;
@@ -173,8 +186,12 @@ export default function App() {
       }
     });
 
+    // Subscriptions
     mqttClient.subscribe('home/sensors/#');
     mqttClient.subscribe('home/+/+/state');
+    mqttClient.subscribe('home/+/+/set');
+    mqttClient.subscribe('home/torch/set');
+    mqttClient.subscribe('home/flashlight/set');
     mqttClient.subscribe('home/status');
 
     return () => {
