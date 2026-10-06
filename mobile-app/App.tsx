@@ -115,9 +115,18 @@ export default function App() {
 
     const unsubscribeMessage = mqttClient.onMessage((topic, payload) => {
       try {
+        let parsedPayload: any = null;
+        try {
+          parsedPayload = JSON.parse(payload);
+        } catch (_) {}
+
+        // 0. IGNORE SELF-ECHO: If message was sent by this phone, do not re-process
+        if (parsedPayload && parsedPayload.sender === config.clientId) {
+          return;
+        }
+
         if (topic.includes('sensors/temperature')) {
-          const data = JSON.parse(payload);
-          const temp = typeof data === 'object' ? data.value : parseFloat(data);
+          const temp = typeof parsedPayload === 'object' && parsedPayload ? parsedPayload.value : parseFloat(payload);
           if (!isNaN(temp)) {
             setSensorData(prev => ({
               ...prev,
@@ -129,8 +138,7 @@ export default function App() {
         }
 
         if (topic.includes('sensors/humidity')) {
-          const data = JSON.parse(payload);
-          const hum = typeof data === 'object' ? data.value : parseFloat(data);
+          const hum = typeof parsedPayload === 'object' && parsedPayload ? parsedPayload.value : parseFloat(payload);
           if (!isNaN(hum)) {
             setSensorData(prev => ({ ...prev, humidity: hum }));
           }
@@ -138,8 +146,7 @@ export default function App() {
         }
 
         if (topic.includes('sensors/motion')) {
-          const data = JSON.parse(payload);
-          const motion = typeof data === 'object' ? !!data.motion_detected : data === 'ON' || data === 'true';
+          const motion = typeof parsedPayload === 'object' && parsedPayload ? !!parsedPayload.motion_detected : payload === 'ON' || payload === 'true';
           setSensorData(prev => ({ ...prev, motionDetected: motion }));
           return;
         }
@@ -230,10 +237,12 @@ export default function App() {
         state: nextState ? 'ON' : 'OFF',
         active: nextState,
         value: targetDev.value,
+        sender: config.clientId,
+        timestamp: Date.now(),
       });
       mqttClient.publish(targetDev.cmdTopic, payload);
     }
-  }, [devices, isOfflineMode]);
+  }, [devices, isOfflineMode, config.clientId]);
 
   const handleValueChange = useCallback((id: string, newValue: number) => {
     setDevices(prev =>
@@ -257,7 +266,7 @@ export default function App() {
       setDevices(prev => prev.map(d => ({ ...d, state: false })));
       if (!isOfflineMode) {
         devices.forEach(d => {
-          mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
+          mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF', sender: config.clientId }));
         });
       }
     } else if (sceneId === 'movie_mode') {
@@ -269,8 +278,8 @@ export default function App() {
         })
       );
       if (!isOfflineMode) {
-        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'ON', brightness: 20 }));
-        mqttClient.publish('home/living_room/plug/set', JSON.stringify({ state: 'ON' }));
+        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'ON', brightness: 20, sender: config.clientId }));
+        mqttClient.publish('home/living_room/plug/set', JSON.stringify({ state: 'ON', sender: config.clientId }));
       }
     } else if (sceneId === 'night_mode') {
       setDevices(prev =>
@@ -281,9 +290,9 @@ export default function App() {
         })
       );
       if (!isOfflineMode) {
-        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'OFF' }));
-        mqttClient.publish('home/kitchen/light/set', JSON.stringify({ state: 'OFF' }));
-        mqttClient.publish('home/bedroom/light/set', JSON.stringify({ state: 'ON', brightness: 15 }));
+        mqttClient.publish('home/living_room/light/set', JSON.stringify({ state: 'OFF', sender: config.clientId }));
+        mqttClient.publish('home/kitchen/light/set', JSON.stringify({ state: 'OFF', sender: config.clientId }));
+        mqttClient.publish('home/bedroom/light/set', JSON.stringify({ state: 'ON', brightness: 15, sender: config.clientId }));
       }
     } else if (sceneId === 'leaving') {
       setDevices(prev =>
@@ -295,13 +304,13 @@ export default function App() {
       if (!isOfflineMode) {
         devices.forEach(d => {
           if (d.id !== 'out_alarm') {
-            mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF' }));
+            mqttClient.publish(d.cmdTopic, JSON.stringify({ state: 'OFF', sender: config.clientId }));
           }
         });
-        mqttClient.publish('home/security/alarm/set', JSON.stringify({ state: 'ON', armed: true }));
+        mqttClient.publish('home/security/alarm/set', JSON.stringify({ state: 'ON', armed: true, sender: config.clientId }));
       }
     }
-  }, [devices, isOfflineMode]);
+  }, [devices, isOfflineMode, config.clientId]);
 
   const handleSaveSettings = async (newConfig: MqttConfig) => {
     setConfig(newConfig);

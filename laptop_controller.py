@@ -98,7 +98,7 @@ def connect_mqtt():
 def set_torch(state: bool):
     global current_torch_state
     current_torch_state = state
-    payload = json.dumps({"state": "ON" if state else "OFF", "brightness": 100})
+    payload = json.dumps({"state": "ON" if state else "OFF", "brightness": 100, "sender": "laptop"})
     client.publish(TORCH_CMD_TOPIC, payload, qos=1)
     client.publish("home/torch/set", payload, qos=1)
     print(f"\n[>>] Sent command to Phone Flashlight: {'[ON]' if state else '[OFF]'}")
@@ -114,7 +114,7 @@ def strobe_torch(count=5, delay=0.4):
 
 
 def set_all(state: bool):
-    payload = json.dumps({"state": "ON" if state else "OFF"})
+    payload = json.dumps({"state": "ON" if state else "OFF", "sender": "laptop"})
     topics = [
         TORCH_CMD_TOPIC,
         "home/living_room/light/set",
